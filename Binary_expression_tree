@@ -1,0 +1,486 @@
+// We need this for the Stack class.
+import java.util.*;
+import javax.swing.RowFilter;
+
+class ExprTreeNode<T> {
+    ExprTreeNode left, right;   // The usual pointers.
+    boolean isLeaf;             // Is this a leaf?
+    T value;                  // If so, we'll store the value here.
+    char op;                    // If not, we need to know which operator.
+    
+    public void print() {
+        StringBuilder sb = new StringBuilder();
+        print(sb, "", true);
+        System.out.println(sb.toString());
+    }
+    
+    public void print(StringBuilder sb) {
+        print(sb, "", true);
+    }
+    
+    public List<ExprTreeNode> getChildren() {
+        List<ExprTreeNode> children = new ArrayList<>();
+        if (left != null)
+            children.add(left);
+        if (right != null)
+            children.add(right);
+        
+        return children;
+    }
+    
+    private void print(StringBuilder sb, String prefix, boolean isTail) {
+        String name;
+        if (value != null)
+            name = value.toString();
+        else
+            name = ""+op;
+        sb.append(prefix).append(isTail ? "└── " : "├── ").append(name).append("\n");
+        for (int i = 0; i < getChildren().size() - 1; i++) {
+            getChildren().get(i).print(sb, prefix + (isTail ? "    " : "│   "), false);
+        }
+        if (getChildren().size() >= 1) {
+            getChildren().get(getChildren().size() - 1).print(sb, prefix + (isTail ?"    " : "│   "), true);
+        }
+    }
+}
+
+
+class ExpressionTree {
+    boolean numeric = true;
+    boolean bool = true;
+    ExprTreeNode root;
+    
+
+    public void parseExpression (String expr)
+    {
+        root = parse (expr);
+    }
+    
+
+    ExprTreeNode parse (String expr)
+    {
+        ExprTreeNode node = new ExprTreeNode ();
+        
+	// Note: expr.charAt(0) is a left paren. 
+        // First, find the matching right paren.
+        int m = findMatchingRightParen (expr, 1);
+        String leftExpr = expr.substring (1, m+1);
+
+        // Bottom-out condition:
+        if (m == expr.length()-1) {
+            // It's at the other end => this is a leaf.
+            String operandStr = expr.substring (1, expr.length()-1);
+            node.isLeaf = true;
+            Object value = getValue(operandStr);
+            if (value == null){
+                numeric = false;
+                node.value = operandStr;
+            } else {
+                node.value = value;
+            }
+            return node;
+        }
+        
+        // Otherwise, there's a second operand and an operator.
+
+	// Find the left paren to match the rightmost right paren.
+        int n = findMatchingLeftParen (expr, expr.length()-2);
+        String rightExpr = expr.substring (n, expr.length()-1);
+
+	// Recursively parse the left and right substrings.
+        node.left = parse (leftExpr);
+        node.right = parse (rightExpr);
+        node.op = expr.charAt (m+1);
+
+        return node;
+    }
+    
+
+    int findMatchingRightParen (String s, int leftPos)
+    {
+        Stack<Character> stack = new Stack<>();
+        stack.push (s.charAt(leftPos));
+        for (int i=leftPos+1; i<s.length(); i++) {
+            char ch = s.charAt (i);
+            if (ch == '(') {
+                stack.push (ch);
+            }
+            else if (ch == ')') {
+                stack.pop ();
+                if ( stack.isEmpty() ) {
+                    // This is the one.
+                    return i;
+                }
+            }
+        }
+        // If we reach here, there's an error.
+        System.out.println ("ERROR: findRight: s=" + s + " left=" + leftPos);
+        return -1;
+    }
+
+
+    int findMatchingLeftParen (String s, int rightPos)
+    {
+        Stack<Character> stack = new Stack<>();
+        stack.push (s.charAt(rightPos));
+        for (int i=rightPos-1; i>=0; i--) {
+            char ch = s.charAt (i);
+            if (ch == ')') {
+                stack.push (ch);
+            }
+            else if (ch == '(') {
+                stack.pop ();
+                if ( stack.isEmpty() ) {
+                    // This is the one.
+                    return i;
+                }
+            }
+        }
+        // If we reach here, there's an error.
+        System.out.println ("ERROR: findLeft: s=" + s + " right=" + rightPos);
+        return -1;
+    }
+
+    Object getValue (String s) {
+        try {
+            int k = Integer.parseInt (s);
+            return k;
+        } catch (NumberFormatException e) {
+            if (s.equalsIgnoreCase("true")) {
+                return true;
+            } else if (s.equalsIgnoreCase("false")) {
+                return false;
+            }
+            return null;
+        }
+        
+    }
+
+
+    public Integer computeValue ()
+    {
+        if (numeric)
+            return compute (root);
+        else
+            return null;
+    }
+    
+    int compute (ExprTreeNode node)
+    {
+        if (node.isLeaf) {
+            return (int) node.value;
+        }
+
+        // Otherwise do left and right, and add.
+        int leftValue = compute (node.left);
+        int rightValue = compute (node.right);
+
+        if (node.op == '+') {
+            return leftValue + rightValue;
+        }
+        else if (node.op == '-') {
+            return leftValue - rightValue;
+        }
+        else if (node.op == '*') {
+            return leftValue * rightValue;
+        }
+        else {
+            return leftValue / rightValue;
+        }
+
+    }
+    
+    RowFilter parseRowFilter (ExprTreeNode node, int[] indices) {
+        if (node.isLeaf) {
+            return RowFilter.regexFilter(node.value.toString(), indices);
+        }
+
+        // Otherwise do left and right, and add.
+        RowFilter leftValue = parseRowFilter(node.left, indices);
+        RowFilter rightValue = parseRowFilter(node.right, indices);
+
+        if (node.op == '∧') {
+            List<RowFilter<Object,Object>> leftRight = new ArrayList<>();
+            leftRight.add(leftValue);
+            leftRight.add(rightValue);
+            return RowFilter.andFilter(leftRight);
+        } else if (node.op == '∨') {
+            List<RowFilter<Object,Object>> leftRight = new ArrayList<>();
+            leftRight.add(leftValue);
+            leftRight.add(rightValue);
+            return RowFilter.orFilter(leftRight);
+        } else {
+            throw new IllegalStateException("Unknown operator: "+node.op);
+        }
+    }
+
+    public String convertToPostfix ()
+    {
+        String str = postOrder (root);
+        return str;
+    }
+    
+    String postOrder (ExprTreeNode node)
+    {
+        String result = "";
+        if (node.left != null) {
+            result += postOrder (node.left);
+        }
+        if (node.right != null) {
+            result += " " + postOrder (node.right);
+        }
+        if (node.isLeaf) {
+            result += " " + node.value;
+        }
+        else {
+            result += " " + node.op;
+        }
+        return result;
+    }
+    
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        root.print(sb);
+        return sb.toString();
+    }
+}
+
+
+class PostfixEvaluator {
+
+    public Integer compute (String postfixExpr)
+    {
+	// Create a stack: all our operands are integers.
+        Stack<Integer> stack = new Stack<>();
+
+	// Use the Scanner class to help us extract numbers or operators:
+        Scanner scanner = new Scanner (postfixExpr);
+
+        while (scanner.hasNext()) {
+
+            if (scanner.hasNextInt()) {
+		// It's an operand => push it on the stack.
+                int N = scanner.nextInt();
+                stack.push (N);
+            }
+            else {
+                // It's an operator => apply the operator to the top two operands
+                String opStr = scanner.next();
+                
+                if (stack.empty()) {
+                    return null;
+                }
+                
+                Integer b = stack.pop(); // Note: b is popped first.
+                Integer a = stack.pop();
+                switch (opStr) {
+                    case "+":
+                        stack.push (a+b);
+                        break;
+                    case "-":
+                        stack.push (a-b);
+                        break;
+                    case "*":
+                        stack.push (a*b);
+                        break;
+                    case "/":
+                        stack.push (a/b);
+                        break;
+                }
+            }
+
+        } // end-while
+        
+        // Result is on top.
+        return stack.pop();
+    }
+
+}
+
+
+
+public class ExpressionParser {
+    public static void main (String[] argv)
+    {
+        String s = "((1)+(2))";
+        test (s);
+
+        s = "(((-1)+(2))*(3))";
+        test (s);
+
+        s = "(((35)-((3)*((3)+(2))))/(4))";
+        test (s);
+        
+        s = "((3)*((3)+(2)))";
+        test (s);
+        
+        s = "((THIS)∧((THAT)∨(¬THOSE)))";
+        test (s);
+    }
+    
+
+    static void test (String s)
+    {
+        ExpressionTree expTree = new ExpressionTree ();
+        expTree.parseExpression(s);
+        Integer v = expTree.computeValue();
+        System.out.println (s + " = " + v);
+        String postStr = expTree.convertToPostfix ();
+        PostfixEvaluator postfixEval = new PostfixEvaluator();
+        Integer p = postfixEval.compute(postStr);
+        System.out.println ("Postfix: " + postStr + "    postfix eval=" + p);
+        System.out.println("");
+        try {
+            RowFilter filter = expTree.parseRowFilter(expTree.root, new int[]{0});
+            System.out.println("filter: "+filter);
+        } catch (IllegalStateException ex) {
+            //nothing
+        }
+        System.out.println("");
+        
+        BTreePrinter.printNode(expTree.root);
+        
+        System.out.println("");
+        
+        System.out.println(expTree.root.toString());
+    }
+}
+
+class BTreePrinter {
+
+    public static <T extends Comparable<?>> void printNode(ExprTreeNode<T> root) {
+        int maxLevel = BTreePrinter.maxLevel(root);
+
+        printNodeInternal(Collections.singletonList(root), 1, maxLevel);
+    }
+
+    private static <T extends Comparable<?>> void printNodeInternal(List<ExprTreeNode<T>> nodes, int level, int maxLevel) {
+        if (nodes.isEmpty() || BTreePrinter.isAllElementsNull(nodes))
+            return;
+
+        int floor = (maxLevel - level + 1);
+        int endgeLines = (int) Math.pow(2, (Math.max(floor - 1, 0)));
+        int firstSpaces = (int) Math.pow(2, (floor)) - 1;
+        int betweenSpaces = (int) Math.pow(2, (floor + 1)) - 1;
+
+        StringBuilder sb = new StringBuilder();
+        BTreePrinter.printWhitespaces(sb,firstSpaces);
+        List<ExprTreeNode<T>> newNodes = new ArrayList<>();
+        for (ExprTreeNode<T> node : nodes) {
+            int compensateString = 0;
+            if (node != null) {
+                if (node.value != null) {
+                    compensateString = node.value.toString().length()/2;
+                    BTreePrinter.compensate(sb, compensateString);
+                    sb.append(node.value);
+                } else {
+                    sb.append(node.op);
+                    compensateString = 0;
+                }
+                newNodes.add(node.left);
+                newNodes.add(node.right);
+            } else {
+                newNodes.add(null);
+                newNodes.add(null);
+                sb.append(" ");
+            }
+
+            betweenSpaces = betweenSpaces - compensateString;
+            BTreePrinter.printWhitespaces(sb, betweenSpaces);
+        }
+        System.out.println(sb.toString());
+
+        for (int i = 1; i <= endgeLines; i++) {
+            for (int j = 0; j < nodes.size(); j++) {
+                BTreePrinter.printWhitespaces(firstSpaces - i);
+                if (nodes.get(j) == null) {
+                    BTreePrinter.printWhitespaces(endgeLines + endgeLines + i + 1);
+                    continue;
+                }
+
+                if (nodes.get(j).left != null)
+                    System.out.print("/");
+                else
+                    BTreePrinter.printWhitespaces(1);
+
+                BTreePrinter.printWhitespaces(i + i - 1);
+
+                if (nodes.get(j).right != null)
+                    System.out.print("\\");
+                else
+                    BTreePrinter.printWhitespaces(1);
+
+                BTreePrinter.printWhitespaces(endgeLines + endgeLines - i);
+            }
+
+            System.out.println("");
+        }
+
+        printNodeInternal(newNodes, level + 1, maxLevel);
+    }
+
+    private static void printWhitespaces(int count) {
+        for (int i = 0; i < count; i++)
+            System.out.print(" ");
+    }
+    
+    private static void printWhitespaces(StringBuilder sb, int count) {
+        for (int i = 0; i < count; i++)
+            sb.append(" ");
+    }
+    
+    private static void compensate(StringBuilder sb, int count) {
+        if (count == 0)
+            return;
+        
+        int i = sb.length()-2;
+        int j = 0;
+        while (sb.charAt(i) == ' ' && i>0 && j<count) {
+            sb.deleteCharAt(i);
+            i--;
+            j++;
+        }
+    }
+
+    private static <T extends Comparable<?>> int maxLevel(ExprTreeNode<T> node) {
+        if (node == null)
+            return 0;
+
+        return Math.max(BTreePrinter.maxLevel(node.left), BTreePrinter.maxLevel(node.right)) + 1;
+    }
+
+    private static <T> boolean isAllElementsNull(List<T> list) {
+        for (Object object : list) {
+            if (object != null)
+                return false;
+        }
+
+        return true;
+    }
+}
+
+class TreeNode {
+
+    final String name;
+    final List<TreeNode> children;
+
+    public TreeNode(String name, List<TreeNode> children) {
+        this.name = name;
+        this.children = children;
+    }
+
+    public void print() {
+        print("", true);
+    }
+
+    private void print(String prefix, boolean isTail) {
+        System.out.println(prefix + (isTail ? "└── " : "├── ") + name);
+        for (int i = 0; i < children.size() - 1; i++) {
+            children.get(i).print(prefix + (isTail ? "    " : "│   "), false);
+        }
+        if (children.size() >= 1) {
+            children.get(children.size() - 1).print(prefix + (isTail ?"    " : "│   "), true);
+        }
+    }
+}
