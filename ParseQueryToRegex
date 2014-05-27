@@ -1,0 +1,231 @@
+package Filter;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Parses regex from the input so that stopwords are converted into valid regex
+ * @author j8suomin
+ */
+public class ParseQueryToRegex {
+    public static final int caseInsensitive = 1;
+    public static final int caseSensitive = 0;
+    
+    public static void main(String[] args) {
+        String test = "(Acoustic AND (GERAN OR ^UTRA)) OR (^Side AND tone)";
+        String test2 = "(UTRA OR Accoustic)";
+        String test3 = "utra Acoustics";
+        System.out.println("INPUT: "+test);
+        System.out.println("OUTPUT: " + parse(test, caseInsensitive));
+        System.out.println("");
+        System.out.println("--------------------");
+        System.out.println("");
+        System.out.println("INPUT: "+test2);
+        System.out.println("CI OUTPUT: " + parse(test2, caseInsensitive));
+        System.out.println("--------------------");
+        System.out.println("");
+        System.out.println("INPUT: "+test3);
+        System.out.println("CI OUTPUT: " + parse(test3, caseInsensitive));
+        System.out.println("--------------------");
+        System.out.println("");
+        System.out.println("INPUT: "+test3);
+        System.out.println("CI OUTPUT: " + parse(test3, caseSensitive));
+        System.out.println("--------------------");
+        System.out.println("");
+        System.out.println("INPUT: ("+test3+")");
+        System.out.println("CI OUTPUT: " + parse("("+test3+" OR GERAN)", caseInsensitive));
+    }
+    
+    public static String parse(String input) {
+        return parse(input, caseSensitive);
+    }
+    
+    public static String parse(String input, int caseSensitivity) {
+        StringBuilder output = new StringBuilder();
+        List<String> split = new ArrayList<>();
+        //Pattern p = Pattern.compile("\\((.*?)\\)",Pattern.DOTALL);
+        //Pattern p = Pattern.compile("\\((.+?)\\)",Pattern.DOTALL);
+        Pattern p = Pattern.compile("\\(?\\(.+?\\)\\)?",Pattern.DOTALL);
+        Matcher m = p.matcher(input);
+        StringBuilder sb = new StringBuilder();
+        boolean found = false;
+        int oldEnd = 0;
+        while (m.find()) {
+            int start = m.start();
+            int end = m.end();
+            if (split.isEmpty()) {
+                String first = input.substring(0, start);
+                if (!first.isEmpty()) {
+                    split.add(first);
+                    //System.out.println("SPLIT 0-"+start+": "+first);
+                }
+            }
+            if (oldEnd != 0) {
+                String sub = input.substring(oldEnd, start);
+                split.add(sub);
+                //System.out.println("SPLIT "+oldEnd+"-"+start+": "+sub);
+            }
+            String sub = input.substring(start, end);
+            split.add(sub);
+            //System.out.println("SPLIT "+start+"-"+end+": "+sub);
+            oldEnd = end;
+            found = true;
+        }
+        if (found) {
+            //If there is a remainder tail, add that to the Split array as the final item
+            String finalSub = input.substring(oldEnd, input.length());
+            if (!finalSub.isEmpty()) {
+                split.add(finalSub);
+                //System.out.println("SPLIT "+oldEnd+"-"+input.length()+": "+finalSub);
+            }
+            
+            //System.out.println("FOUND!");
+            
+            //Go through the Split array and parse the items one by one
+            for (int i = 0; i<split.size(); i++) {
+                String current = split.get(i);
+                if (current.startsWith("(")) {
+                    String replacement = parse(current.substring(1, current.length()-1), caseSensitive);
+                    split.set(i, replacement);
+                }
+            }
+            
+            //If there is only one set of parenthesis in the input, return the parsed version of that
+            //for example if the input is "(UTRA or GERAN)"
+            if (split.size() < 2) {
+                if (caseSensitivity == caseInsensitive) {
+                    output.append("(");
+                    output.append("(?i)");
+                    output.append(split.get(0));
+                    output.append(")");
+                    return output.toString();
+                } else {             
+                    return split.get(0);
+                }
+            }
+            
+            for (String s : split) {
+                //System.out.println("ARRAY: "+s);
+                sb.append(s);
+            }
+            
+            
+            input = sb.toString();
+            //System.out.println("NEW INPUT: "+input);
+        }
+
+        /**
+         * 
+         * AND
+         * 
+         */
+        if (input.contains(" AND ")) {
+            //Split the text on every occurrence of " AND "
+            String[] splitFieldText = input.split(" AND ");
+            //An array for the final filter regex text
+            String[] filterTexts = new String[splitFieldText.length];
+            
+            for (int i = 0; i<splitFieldText.length; i++) {
+                String searchPhrase = splitFieldText[i];
+                //Check if the first charracter in the searchPhrase is "^"
+                boolean lineStartOperator = searchPhrase.startsWith("^");
+
+                //If the first charracter is "^", remove it from the string, get a Pattern quote of the string and then add the "^" back to the beginning of the string
+                if (lineStartOperator) {
+                    searchPhrase = searchPhrase.substring(1);
+                    //Use Pattern.quote(input) to remove any special charracters from the input
+                    searchPhrase = Pattern.quote(searchPhrase);
+                    searchPhrase = "^"+searchPhrase;
+                }
+
+                filterTexts[i] = searchPhrase;
+            }
+
+            //If the case insensitivity checkbox was selected, add case insensitivity regex to the beginning of the string and a "or any amount of whitespace" regex to the end of the string
+            //Else just add a "or any amount of whitespace" regex to the end of the string
+            for (String filter : filterTexts) {
+                output.append("(?=.*");
+                if (caseSensitivity == caseInsensitive)
+                    output.append("(?i)");
+                output.append("(");
+                if (!filter.contains("\\Q") && !filter.contains("^")) {
+                    output.append("\\Q");
+                    output.append(filter);
+                    output.append("\\E");
+                } else {
+                    output.append(filter);
+                }
+                output.append(")");
+                output.append("|^$");
+                output.append(")");
+            }
+
+            return output.toString();
+            
+        /**
+         * 
+         * OR
+         * 
+         */
+        } else if (input.contains(" OR ")) {
+            //Split the text on every occurrence of " OR "
+            String[] splitFieldText2 = input.split(" OR ");
+            //An array for the final filter regex text
+            String[] filterTexts2 = new String[splitFieldText2.length];
+
+            for (int i = 0; i<splitFieldText2.length; i++) {
+                String searchPhrase = splitFieldText2[i];
+                
+                //Check if the first charracter in the searchPhrase is "^"
+                boolean lineStartOperator = searchPhrase.startsWith("^");
+                
+                 //If the first charracter is "^", remove it from the string, get a Pattern quote of the string and then add the "^" back to the beginning of the string
+                if (lineStartOperator) {
+                    searchPhrase = searchPhrase.substring(1);
+                    //Use Pattern.quote(input) to remove any special charracters from the input
+                    searchPhrase = Pattern.quote(searchPhrase);
+                    searchPhrase = "^"+searchPhrase;
+                }
+
+                filterTexts2[i] = searchPhrase;
+            }
+
+            String or = "";
+            for (String filter : filterTexts2) {
+                output.append(or);
+                output.append("(");
+                if (caseSensitivity == caseInsensitive)
+                    output.append("(?i)");
+                if (!filter.contains("\\Q") && !filter.contains("^")) {
+                    output.append("\\Q");
+                    output.append(filter);
+                    output.append("\\E");
+                } else {
+                    output.append(filter);
+                }
+                output.append(")");
+                or = "|";
+            }
+
+            return output.toString();
+        /**
+         * 
+         * No " AND " or " OR " 
+         * 
+         */
+        } else {
+            input = Pattern.quote(input);
+            if (caseSensitivity == caseInsensitive) {
+                output.append("(");
+                output.append("(?i)");
+                output.append(input);
+                output.append(")");
+                return output.toString();
+            } else {
+                return input;
+            }
+        }
+    }
+}
