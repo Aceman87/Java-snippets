@@ -1,0 +1,80 @@
+package Data.NavigableLinkedList;
+
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ *
+ * @param <E> 
+ * @author j7suomin
+ */
+public class NavigableLinkedList<E> implements Serializable {
+    private int pointer = -1;
+    private final List<E> list;
+    
+    /**
+     *
+     * @param c
+     */
+    public NavigableLinkedList(Collection<? extends E> c) {
+        list = new LinkedList<>(c);
+        pointer = -1;
+    }
+    
+    /**
+     * Returns the next element in the list and moves the pointer forward by one.
+     * @return 
+     */
+    public E getNext() {
+        if ((pointer + 1) < list.size()) {
+            pointer++;
+            return list.get(pointer);
+        } else {
+            throw new IndexOutOfBoundsException("No next element in list");
+        }
+    }
+    
+    /**
+     * Returns the element that has the pointer at this time.
+     * @return 
+     */
+    public E getCurrent() {
+        if (pointer == -1) {
+            return getNext();
+        } 
+        else {
+            return list.get(pointer);
+        }
+    }
+    
+    /**
+     * Returns the previous element in the list and moves the pointer backwards by one.
+     * @return 
+     */
+    public E getPrevious() {
+        if ((pointer - 1) >= 0) {
+            pointer--;
+            return list.get(pointer);
+        } else {
+            throw new IndexOutOfBoundsException("No previous element in list");
+        }
+    }
+    
+    /**
+     * Returns the number of elements in the list.
+     * @return 
+     */
+    public int size() {
+        return list.size();
+    }
+    
+    /**
+     * Returns true if there is an element in the list after the current one.
+     * @return 
+     */
+    public boolean hasNext() {
+        return (pointer + 1) < list.size();
+    }
+}
