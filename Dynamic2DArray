@@ -1,0 +1,62 @@
+package Dynamic2DArray;
+
+import java.util.ArrayList;
+
+public class Dynamic2DArray<E> {
+    ArrayList<ArrayList<E>> list;
+    int colSize;
+    
+    public Dynamic2DArray(){
+        clear();
+    }
+    
+    public void addElement(int row,int col,E element){
+        colSize = Math.max(colSize, col + 1);
+        for(int i = list.size();i <= row;i++){
+            list.add(i,new ArrayList<E>());
+        }
+        for(int i = list.get(row).size();i <= col;i++){
+            list.get(row).add(i,null);
+        }
+        list.get(row).remove(col);
+        list.get(row).add(col,element);
+    }
+    public ArrayList<E> getRow(int row){
+        if(list.size() > row){
+            return list.get(row);
+        }
+        return null;
+    }
+    public E getElement(int row,int col){
+        if(list.size() > row){
+            if(list.get(row).size() > col){
+                return list.get(row).get(col);
+            }
+        }
+        return null;
+    }
+    
+    public int size(){
+        return list.size();
+    }
+    public int getMaxColSize(){
+        return colSize;
+    }
+    
+    public void clear(){
+        list = new ArrayList<ArrayList<E>>();
+        colSize = 0;
+    }
+    
+    @Override
+    public String toString(){
+        String output = "";
+        for(int i = 0;i < list.size();i++){
+            for(int t = 0;t < list.get(i).size();t++){
+                output += list.get(i).get(t) + "\t";
+            }
+            output += "\r\n";
+        }
+        return output;
+    }
+}
